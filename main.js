@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
 
+const DEFAULT_CAMERA_HEIGHT = 1.8;
 const COLORS = {
   FLOOR: 0x2e1e1b,
   BACKGROUND: 0x1b0e04,
@@ -16,7 +17,8 @@ const createCube = (args) => {
     material = new THREE.MeshBasicMaterial({ color: color }),
   } = args;
   const geometry = new THREE.BoxGeometry(width, heigth, depth);
-  return new THREE.Mesh(geometry, material);
+  const cube = new THREE.Mesh(geometry, material);
+  return cube;
 };
 
 const createFloor = (args) => {
@@ -37,6 +39,7 @@ let moveForward = false;
 let moveBackward = false;
 let moveLeft = false;
 let moveRight = false;
+let canJump = false;
 let prevTime = performance.now();
 
 const velocity = new THREE.Vector3();
@@ -52,19 +55,13 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   1000,
 );
-camera.position.y = 1.8;
+camera.position.y = DEFAULT_CAMERA_HEIGHT;
 camera.position.z = 15;
 
 // Scene
 const scene = new THREE.Scene();
-//scene.background = loader.load("assets/sky.png");
-scene.background = new THREE.Color().setHex(0x085c99);
-scene.fog = new THREE.Fog(0x040002, 0, 550);
-
-// Light?
-const light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 2.5);
-light.position.set(0.5, 1, 0.75);
-scene.add(light);
+scene.background = new THREE.Color().setHex(0x000000);
+scene.fog = new THREE.Fog(0x040002, 0, 100);
 
 // Controller
 const controls = new PointerLockControls(camera, document.body);
@@ -75,6 +72,8 @@ document.addEventListener("click", function () {
 
 // Render
 const renderer = new THREE.WebGLRenderer();
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setAnimationLoop(animate);
 document.body.appendChild(renderer.domElement);
@@ -83,8 +82,8 @@ document.body.appendChild(renderer.domElement);
 const createMonolith = (x, y, z, side, catPlane, scene) => {
   const cube = createCube({
     color: COLORS.MONOLITH,
-    width: 2,
-    depth: 36,
+    width: 36,
+    depth: 2,
     heigth: 48,
   });
 
@@ -103,8 +102,10 @@ const createMonolith = (x, y, z, side, catPlane, scene) => {
   catPlane.translateZ(z);
   if (side === "left") {
     catPlane.rotateY(Math.PI / 2);
+    cube.rotateY(Math.PI / 2);
   } else {
     catPlane.rotateY(-Math.PI / 2);
+    cube.rotateY(-Math.PI / 2);
   }
 
   scene.add(cube);
@@ -112,7 +113,6 @@ const createMonolith = (x, y, z, side, catPlane, scene) => {
   return [cube, catPlane];
 };
 
-// Cat
 const catTextures = [
   loader.load("assets/cats/cat1.png"),
   loader.load("assets/cats/cat2.png"),
@@ -127,7 +127,6 @@ const randomCatPlane = () => {
   return plane;
 };
 
-// Monoliths
 const monoliths = [];
 const catPlanes = [];
 for (let i = 0; i < 15; i++) {
@@ -152,28 +151,7 @@ for (let i = 0; i < 15; i++) {
   );
   monoliths.push(rMonolith);
   catPlanes.push(rCatPlane);
-
-  /*
-    const rightCube = createCube({color: COLORS.MONOLITH, width:2, depth:36,heigth: 48})
-    rightCube.translateZ(48 + -(i*48))
-    rightCube.translateX(-48) // Left
-    rightCube.translateY(-25) // height
-    scene.add(rightCube)
-    monoliths.push(rightCube)*/
 }
-
-// Cubes
-/*
-const cubes = [
-    createCube({color:0x00ff00}),
-    createCube({color:0x0000ff}),
-    createCube({color:0xff0000})
-]
-cubes.forEach((c,i) => {
-    scene.add(c)
-    c.translateX(4)
-    c.translateY(1+ (2 * i))
-})*/
 
 // Floor
 const floorTexture = loader.load("assets/grass.jpg");
@@ -185,51 +163,29 @@ const floor = createFloor({ material: floorMaterial });
 floor.position.y = 0;
 scene.add(floor);
 
-/**
-const createFloor = (args) => {
-    const {
-     width = 2000,
-     height = 2000,
-     color = COLORS.FLOOR,
-     material = new THREE.MeshBasicMaterial({ color: color})
-    } = args ?? {}
-    const floorGeometry = new THREE.PlaneGeometry(width, height)
-    const floor = new THREE.Mesh(floorGeometry, material)
-    floor.rotateX(-Math.PI/2)
-    return floor;
-}*/
-
-// Strip
-/*
-const stripTexture = loader.load("assets/ground.png")
-stripTexture.wrapS = THREE.RepeatWrapping;
-stripTexture.wrapT = THREE.RepeatWrapping;
-stripTexture.repeat.set(1,64)
-const stripMaterial = new THREE.MeshBasicMaterial( { map:stripTexture } );
-const strip = createFloor({width: 5, height: 200, color: 0x3D1711, material: stripMaterial})
-strip.position.y = 0.01
-strip.position.z = -80
-scene.add(strip)
-*/
+const movingTowardsPlayer = {};
 
 let iterations = 0;
+let turnHeads = false;
 function animate() {
-  /*
-    cubes.forEach((c,i) => {
-        c.rotateX(0.01 * (i+ 1))
-        c.rotateY(0.01 * (i+ 1))
-    })*/
-
   const time = performance.now();
   if (controls.isLocked === true) {
     if (iterations++ < 48 * 10) {
       monoliths.forEach((m) => m.translateY(0.1));
       catPlanes.forEach((m) => m.translateY(0.1));
     }
+    if (iterations > 48 * 10 && iterations < 48 * 10 * 1.5) {
+      monoliths.forEach((m) => m.translateY(-0.2));
+    }
+    if (iterations > 48 * 10 * 1.5) {
+      turnHeads = true;
+    }
 
     const delta = (time - prevTime) / 1000;
-    velocity.x -= velocity.x * 20.0 * delta;
-    velocity.z -= velocity.z * 20.0 * delta;
+
+    velocity.x -= velocity.x * 10.0 * delta;
+    velocity.z -= velocity.z * 10.0 * delta;
+    velocity.y -= 1.0 * 100.0 * delta; // 100.0 = mass
 
     direction.z = Number(moveForward) - Number(moveBackward);
     direction.x = Number(moveRight) - Number(moveLeft);
@@ -240,6 +196,45 @@ function animate() {
 
     controls.moveRight(-velocity.x * delta);
     controls.moveForward(-velocity.z * delta);
+
+    controls.object.position.y += velocity.y * delta;
+    if (controls.object.position.y < DEFAULT_CAMERA_HEIGHT) {
+      velocity.y = 0;
+      controls.object.position.y = DEFAULT_CAMERA_HEIGHT;
+      canJump = true;
+    }
+
+    if (turnHeads) {
+      catPlanes.forEach((plane, i) => {
+        const distance = camera.position.distanceTo(plane.position);
+        if (!movingTowardsPlayer[i] && distance <= 30) {
+          movingTowardsPlayer[i] = true;
+          plane.material.color.set(0xff0000);
+        }
+
+        if (movingTowardsPlayer[i] && distance > 10) {
+          plane.quaternion.copy(camera.quaternion);
+
+          const baseMoveSpeed = 0.1;
+          const maxMoveSpeed = 0.5;
+          const maxDistance = 30; // Use the same distance threshold
+          let moveSpeed =
+            baseMoveSpeed +
+            (maxMoveSpeed - baseMoveSpeed) *
+              (1 - Math.min(distance / maxDistance, 1));
+          moveSpeed = Math.max(
+            baseMoveSpeed,
+            Math.min(moveSpeed, maxMoveSpeed),
+          );
+
+          const directionToPlayer = new THREE.Vector3();
+          directionToPlayer
+            .subVectors(camera.position, plane.position)
+            .normalize(); // Calculate direction
+          plane.position.add(directionToPlayer.multiplyScalar(moveSpeed)); // Move the plane
+        }
+      });
+    }
   }
   prevTime = time;
 
@@ -263,6 +258,12 @@ const onKeyDown = (event) => {
     case "ArrowRight":
     case "KeyD":
       moveRight = true;
+      break;
+    case "Space":
+      if (canJump) {
+        velocity.y += 100;
+        canJump = false;
+      }
       break;
   }
 };
@@ -288,5 +289,12 @@ const onKeyUp = (event) => {
   }
 };
 
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+window.addEventListener("resize", onWindowResize);
 document.addEventListener("keydown", onKeyDown);
 document.addEventListener("keyup", onKeyUp);
